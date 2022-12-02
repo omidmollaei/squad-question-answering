@@ -14,7 +14,7 @@ class PositionalEncoding(tf.keras.layers.Layer):
 
     def get_config(self):
         config = super(PositionalEncoding, self).get_config()
-        config.update({"position": self.position, "d_model": self.d_model})
+        config.update({"position": self.position, "model_dim": self.model_dim})
         return config
 
     def get_angles(self, position: tf.Tensor, i: tf.Tensor, model_dim: tf.Tensor):
@@ -38,4 +38,27 @@ class PositionalEncoding(tf.keras.layers.Layer):
         return inputs + self.pos_encoding[:, : tf.shape(inputs)[1], :]
 
 
+def self_atten_block(params: Parameters, name: str = "self_attention_block"):
+    inputs = keras.layers.Input(shape=[None, params.model_dim], name="inputs")
+    atten_mask = keras.layers.Input(shape=[None, None], name="attention_mask")
+    atten = keras.layers.MultiHeadAttention(
+        key_dim=params.model_dim,
+        num_heads=params.num_heads,
+    )(
+        query=inputs,
+        value=inputs,
+        attention_mask=atten_mask
+    )
+
+    atten = keras.layers.Dropout(rate=params.dropout_rate)(atten)
+    atten = keras.layers.Add()([atten, tf.cast(inputs, dtype=tf.float32)])
+    atten = keras.layers.LayerNormalization(epsilon=1e-6)(atten)
+
+    outputs = keras.layers.Dense(params.dense_units, activation=params.activation)(atten)
+    outputs = keras.layers.Dense(params.model_dim)(outputs)
+    outputs = keras.layers.Dropout(rate=params.dropout_rate)(outputs)
+    outputs = keras.layers.Add()([atten, tf.cast(inputs, dtype=tf.float32)])
+    outputs = keras.layers.LayerNormalization(epsilon=1e-6)(outputs)
+
+    return tf.keras.Model(inputs=[inputs, atten_mask], outputs=outputs)
 
