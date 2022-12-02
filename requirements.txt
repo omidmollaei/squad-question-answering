@@ -1,0 +1,6 @@
+datasets>=2.6
+tensorflow>=2.1
+numpy
+pandas
+
+
