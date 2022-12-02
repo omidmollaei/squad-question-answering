@@ -62,3 +62,24 @@ def self_atten_block(params: Parameters, name: str = "self_attention_block"):
 
     return tf.keras.Model(inputs=[inputs, atten_mask], outputs=outputs)
 
+
+def self_atten_encoder(params: Parameters, name: str = "self_atten_encoder"):
+    inputs = keras.layers.Input(shape=[None, ], name="inputs")
+    atten_mask = keras.layers.Input(shape=[None, None], name="atten_mask")
+    embeddings = keras.layers.Embedding(params.vocab_size, params.model_dim)
+    embeddings *= tf.math.sqrt(tf.cast(params.model_dim, dtype=tf.float32))
+    embeddings = PositionalEncoding(
+        position=params.vocab_size, model_dim=params.model_dim
+    )(embeddings)
+    outputs = keras.layers.Dropout(rate=params.dropout_rate)(embeddings)
+
+    for i in range(params.atten_encoder_num_layers):
+        outputs = self_atten_block(
+            params=params,
+            name=f"self_atten_block_{i}"
+        )([outputs, atten_mask])
+
+    return tf.keras.Model(inputs=[inputs, atten_mask], outputs=outputs)
+
+
+
