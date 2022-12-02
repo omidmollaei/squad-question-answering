@@ -66,7 +66,7 @@ def self_atten_block(params: Parameters, name: str = "self_attention_block"):
 def self_atten_encoder(params: Parameters, name: str = "self_atten_encoder"):
     inputs = keras.layers.Input(shape=[None, ], name="inputs")
     atten_mask = keras.layers.Input(shape=[None, None], name="atten_mask")
-    embeddings = keras.layers.Embedding(params.vocab_size, params.model_dim)
+    embeddings = keras.layers.Embedding(params.vocab_size, params.model_dim, mask_zero=True)
     embeddings *= tf.math.sqrt(tf.cast(params.model_dim, dtype=tf.float32))
     embeddings = PositionalEncoding(
         position=params.vocab_size, model_dim=params.model_dim
@@ -82,4 +82,13 @@ def self_atten_encoder(params: Parameters, name: str = "self_atten_encoder"):
     return tf.keras.Model(inputs=[inputs, atten_mask], outputs=outputs)
 
 
+def recurrent_encoder_block(params: Parameters, name: str = "recurrent_encoder_block"):
+    inputs = keras.layers.Input(shape=[None, params.model_dim])
+    outputs = keras.layers.Bidirectional(
+        merge_mode="sum",
+        layer=keras.layers.GRU(
+            units=params.model_dim, return_sequences=True, recurrent_initializer="glorot_uniform"
+        )
+    )(inputs)
 
+    return tf.keras.Model(inputs, outputs, name=name)
