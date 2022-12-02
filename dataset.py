@@ -31,6 +31,10 @@ def shorten_context(context: str, question: str, top_n: int = 2) -> str:
     matches = pd.DataFrame(all_match, columns=["sent_no", "n_match"])
     matches.sort_values(by=["n_match", "sent_no"], ascending=False, inplace=True)
     top_matched = matches.iloc[:top_n]
-    best_sentences = list(all_match["sent_no"])
+    best_sentences = list(top_matched["sent_no"])
     best_sentences = [sentences[s_no] for s_no in best_sentences]
     return ". ".join(best_sentences)
+
+
+
+
