@@ -1,6 +1,5 @@
 """load and preprocess SQuAD dataset, build tokenizer and convert dataset into a tf-dataset"""
 
-import os
 import datasets
 import pandas as pd
 import tensorflow as tf
@@ -45,8 +44,19 @@ def shorten_context(context: str, question: str, top_n: int = 2) -> str:
     return ". ".join(best_sentences)
 
 
-def tokenize(vocab_size: int, text_data: list):
-    return 1
+def special_tokens(s: str):
+    s = tf.strings.join("[SOS]", s, "[EOS]", separator=" ")
+    s = tf.strings.strip(s)
+    return s
+
+
+def build_tokenizer(vocab_size: int, text_data: list):
+    tokenizer = tf.keras.layers.TextVectorization(
+        max_tokens=vocab_size,
+        standardize=special_tokens,
+        ragged=True
+    ).adapt(text_data)
+    return tokenizer
 
 
 def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_answers: bool = True):
@@ -85,8 +95,8 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
     ds_info["num_dropped"] = num_dropped
 
     print("initializing tokenizer ...")
-    tokenizer = tokenize(vocab_size=params.vocab_size,
-                         text_data=contexts + questions[:40_000])
+    tokenizer = build_tokenizer(vocab_size=params.vocab_size,
+                                text_data=contexts + questions[:40_000])
 
     print("build tf-dataset ...")
     if tokenize_answers:
@@ -101,8 +111,3 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
     if with_info:
         return dataset, tokenizer, ds_info
     return dataset, tokenizer
-
-
-
-
-
