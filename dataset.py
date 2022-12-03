@@ -14,10 +14,21 @@ class Parameters(object):
 
 
 def parameters_hint():
-    hint = """An instance of Parameters class must contains the following attributes:
-    vocab_size: total vocabulary size, required by tokenizer (recommended [20_000, 30_000]).
-    batch_size: size of each batch in tf-dataset (recommended [32, 64, 128]). 
+    hint = f"""
+    An instance of Parameters class must contains the following attributes:
+    --------------------------------------------------------------------------------------------------
+    1) vocab_size {'':20}: Total vocabulary size, required by tokenizer.                             
+    2) batch_size {'':20}: Size of each batch in tf-dataset.                                         
+    3) model_dim  {'':20}: Model dimension while processing sequences                                
+    4) num_heads  {'':20}: Number of attention heads in self and cross attention encoder.            
+    5) atten_encoder_num_layers {'':6}: Number of layers in self-attention encoder.                  
+    6) recurrent_encoder_num_layers {'':2}: Number of layers in recurrent-attention encoder.         
+    7) dense_units {'':19}: Number of units to project during model sequence processing.             
+    8) activation {'':20}: Activation function to be used during model processing.                   
+    9) dropout_rate {'':20}: Rate for Dropout layer. 
+    --------------------------------------------------------------------------------------------------
     """
+    return hint
 
 
 def shorten_context(context: str, question: str, top_n: int = 2) -> str:
@@ -44,8 +55,8 @@ def shorten_context(context: str, question: str, top_n: int = 2) -> str:
     return ". ".join(best_sentences)
 
 
-def special_tokens(s: str):
-    s = tf.strings.join("[SOS]", s, "[EOS]", separator=" ")
+def add_special_tokens(s: str):
+    s = tf.strings.join(inputs=["[SOS]", s, "[EOS]"], separator=" ")
     s = tf.strings.strip(s)
     return s
 
@@ -53,9 +64,10 @@ def special_tokens(s: str):
 def build_tokenizer(vocab_size: int, text_data: list):
     tokenizer = tf.keras.layers.TextVectorization(
         max_tokens=vocab_size,
-        standardize=special_tokens,
+        standardize=add_special_tokens,
         ragged=True
-    ).adapt(text_data)
+    )
+    tokenizer.adapt(text_data)
     return tokenizer
 
 
@@ -84,7 +96,7 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
             num_dropped += 1
             continue
         contexts.append(new_context)
-        questions.append(question)
+        questions.append("[SOA] [LOA] " + question)
         answers.append(answer)
         answers_start.append(new_context.find(answer))
         answers_len.append(len(answer))
@@ -97,7 +109,6 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
     print("initializing tokenizer ...")
     tokenizer = build_tokenizer(vocab_size=params.vocab_size,
                                 text_data=contexts + questions[:40_000])
-
     print("build tf-dataset ...")
     if tokenize_answers:
         answers = tokenizer(answers).to_tensor()
