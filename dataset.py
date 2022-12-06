@@ -71,9 +71,9 @@ def build_tokenizer(vocab_size: int, text_data: list):
     return tokenizer
 
 
-def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_answers: bool = True):
+def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize: bool = True):
     """main function to load squad dataset. The resulting dataset is a tf-dataset which contains two
-    inputs (context and question) and three outputs (answer, answer-start and answer-len)."""
+    inputs (context and question) and one output (answer text)"""
 
     num_dropped = 0
     ds_info = {
@@ -81,6 +81,7 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
         "questions_length": [],
         "answers_length": [],
     }
+
     contexts, questions, answers = [], [], []
     answers_start, answers_len = [], []
 
@@ -95,11 +96,9 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
         if answer not in new_context:
             num_dropped += 1
             continue
-        contexts.append(new_context)
-        questions.append("[SOA] [LOA] " + question)
-        answers.append(answer)
-        answers_start.append(new_context.find(answer))
-        answers_len.append(len(answer))
+        contexts.append("[SOS] " + new_context + " [EOS]")
+        questions.append("[SOS] " + question + " [EOS]")
+        answers.append(answer + " [EOS]")
         ds_info['contexts_length'].append(len(new_context.split(" ")))
         ds_info['questions_length'].append(len(question.split(" ")))
         ds_info['answers_length'].append(len(answer.split(" ")))
@@ -109,13 +108,16 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize_ans
     print("initializing tokenizer ...")
     tokenizer = build_tokenizer(vocab_size=params.vocab_size,
                                 text_data=contexts + questions[:40_000])
+
     print("build tf-dataset ...")
-    if tokenize_answers:
+    if tokenize:
         answers = tokenizer(answers).to_tensor()
+        contexts = tokenizer(contexts).to_tensor()
+        questions = tokenizer(questions).to_tensor()
 
     dataset = tf.data.Dataset.from_tensor_slices((
         {"context_input": contexts, "question_input": questions},
-        {"answer_text": answers, "answer_start": answers_start, "answer_length": answers_len}
+        answers
     ))
     dataset = dataset.cache().shuffle(len(contexts))
     dataset = dataset.batch(params.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
