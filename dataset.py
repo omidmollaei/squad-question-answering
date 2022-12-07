@@ -3,6 +3,7 @@
 import datasets
 import pandas as pd
 import tensorflow as tf
+import tensorflow_datasets as tfds
 from tqdm import tqdm
 
 ds_name = "squad"
@@ -55,35 +56,27 @@ def shorten_context(context: str, question: str, top_n: int = 2) -> str:
     return ". ".join(best_sentences)
 
 
-def add_special_tokens(s: str):
-    s = tf.strings.join(inputs=["[SOS]", s, "[EOS]"], separator=" ")
-    s = tf.strings.strip(s)
-    return s
-
-
-def build_tokenizer(vocab_size: int, text_data: list):
-    tokenizer = tf.keras.layers.TextVectorization(
-        max_tokens=vocab_size,
-        standardize=add_special_tokens,
-        ragged=True
+def tokenization(params, contexts: list, questions: list, answers: list):
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
+        contexts + questions[:25_000], target_vocab_size=params.vocab_size
     )
-    tokenizer.adapt(text_data)
-    return tokenizer
+    tokenizer.save_to_file("saved_tokenizer")
+    tokenized_context_questions, tokenized_answers = [], []
+    for (context, question), answer in tqdm(zip(zip(contexts, questions), answers)):
+        sentence1 = params.start_token + tokenizer.encode(context) + params.sep_token + \
+                    tokenizer.encode(question) + params.end_token
+        sentence2 = params.start_token + tokenizer.encode(answer)
+        tokenized_context_questions.append(sentence1)
+        tokenized_answers.append(sentence2)
+
+    return tokenized_context_questions, tokenized_answers, tokenizer
 
 
-def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize: bool = True):
+def load_squad_dataset(params: Parameters):
     """main function to load squad dataset. The resulting dataset is a tf-dataset which contains two
     inputs (context and question) and one output (answer text)"""
 
-    num_dropped = 0
-    ds_info = {
-        "contexts_length": [],
-        "questions_length": [],
-        "answers_length": [],
-    }
-
     contexts, questions, answers = [], [], []
-    answers_start, answers_len = [], []
 
     print("loading dataset from huggingface ...")
     squad_dataset = datasets.load_dataset(ds_name, split='train')
@@ -94,26 +87,18 @@ def load_squad_dataset(params: Parameters, with_info: bool = False, tokenize: bo
         answer = sample['answers']['text'][0]
         new_context = shorten_context(main_context, question, top_n=3)
         if answer not in new_context:
-            num_dropped += 1
             continue
-        contexts.append("[SOS] " + new_context + " [EOS]")
-        questions.append("[SOS] " + question + " [EOS]")
-        answers.append(answer + " [EOS]")
-        ds_info['contexts_length'].append(len(new_context.split(" ")))
-        ds_info['questions_length'].append(len(question.split(" ")))
-        ds_info['answers_length'].append(len(answer.split(" ")))
+        contexts.append(new_context)
+        questions.append(question)
+        answers.append(answer)
 
-    ds_info["num_dropped"] = num_dropped
+    print("tokenization ...")
+    context_questions, answers, tokenizer = tokenization(contexts, questions, answers)
 
-    print("initializing tokenizer ...")
-    tokenizer = build_tokenizer(vocab_size=params.vocab_size,
-                                text_data=contexts + questions[:40_000])
-
-    print("build tf-dataset ...")
-    if tokenize:
-        answers = tokenizer(answers).to_tensor()
-        contexts = tokenizer(contexts).to_tensor()
-        questions = tokenizer(questions).to_tensor()
+    print("padding ...")
+    context_questions = tf.keras.layers.preprocessing.sequnce.pad_sequence(
+        context_questions, maxlen=params.max_len
+    )
 
     dataset = tf.data.Dataset.from_tensor_slices((
         {"context_input": contexts, "question_input": questions},
