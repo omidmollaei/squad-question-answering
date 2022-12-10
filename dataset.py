@@ -53,30 +53,26 @@ def shorten_squad(ds) -> Tuple[list, list, list]:
     return contexts, questions, answers
 
 
-def padding(params, c, q, a):
-    tokenized_contexts = tf.keras.preprocessing.sequence.pad_sequences(
-        c, maxlen=params.max_context_len, padding="post")
-    tokenized_questions = tf.keras.preprocessing.sequence.pad_sequences(
-        q, maxlen=params.max_question_len, padding="post")
-    tokenized_answers = tf.keras.preprocessing.sequence.pad_sequences(
-        a, maxlen=params.max_question_len, padding="post")
-    return tokenized_contexts, tokenized_questions, tokenized_answers
+def padding(params, context_question, answer):
+    context_question = tf.keras.preprocessing.sequence.pad_sequences(
+        context_question, maxlen=params.max_input_len, padding="post")
+    answer = tf.keras.preprocessing.sequence.pad_sequences(answer, padding="post")
+    return context_question, answer
 
 
 def tokenize_and_padding(params, contexts, questions, answers, tokenizer):
-    tokenized_contexts, tokenized_questions, tokenized_answers = [], [], []
+    contex_question_tokenized, answers_tokenized = [], []
     for c, q, a in tqdm(zip(contexts, questions, answers)):
-        c = params.start_token + tokenizer.encode(c) + params.end_token
-        q = params.start_token + tokenizer.encode(q) + params.end_token
-        a = params.start_token + tokenizer.encode(a) + params.end_token
-        if len(c) <= params.max_context_len and len(q) <= params.max_question_len \
-                and len(a) <= params.max_question_len:     # filter long contexts|questions|answers
-            tokenized_contexts.append(c)
-            tokenized_questions.append(q)
-            tokenized_answers.append(a)
+        c = params.start_token + tokenizer.encode(c) + params.end_token     # tokenize context
+        q = params.start_token + tokenizer.encode(q) + params.end_token     # tokenize question
+        a = params.start_token + tokenizer.encode(a) + params.end_token     # tokenize answer
+        cq = c + params.sep_token + a                                       # concat context and question
+        if len(cq) <= params.max_input_len:                                 # filter long input sequences
+            contex_question_tokenized.append(cq)
+            answers_tokenized.append(a)
 
-    contexts, questions, answers = padding(params, tokenized_contexts, tokenized_questions, tokenized_answers)
-    return contexts, questions, answers
+    contexts_questions, answers = padding(params, contex_question_tokenized, answers_tokenized)
+    return contexts_questions, answers
 
 
 def load_squad_dataset(params: Parameters):
@@ -91,16 +87,20 @@ def load_squad_dataset(params: Parameters):
 
     print("initializing tokenizer ...")
     tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
-        contexts + questions[:25_000], target_vocab_size=params.vocab_size)
+        contexts + questions[:30_000], target_vocab_size=params.vocab_size)
+
     tokenizer.save_to_file("saved_tokenizer")
     params.start_token = [tokenizer.vocab_size]
     params.end_token = [tokenizer.vocab_size + 1]
-    params.vocab_size = params.vocab_size + 2
+    params.sep_token = [tokenizer.vocab_size + 2]
+    params.vocab_size = params.vocab_size + 3
 
     print("tokenize and padding ... ")
-    contexts, questions, answers = tokenize_and_padding(params, contexts, questions, answers, tokenizer)
+    contexts_questions, answers = tokenize_and_padding(params, contexts, questions, answers, tokenizer)
 
-    dataset = tf.data.Dataset.from_tensor_slices(({"context_input": contexts, "question_input": questions}, answers))
+    dataset = tf.data.Dataset.from_tensor_slices((
+        {"context_question_input": contexts_questions, "answer_input": answers[:, :-1]}, answers[:, 1:]
+    ))
     dataset = dataset.cache().shuffle(len(contexts))
     dataset = dataset.batch(params.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
     return dataset, tokenizer
