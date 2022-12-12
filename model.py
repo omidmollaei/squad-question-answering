@@ -256,3 +256,15 @@ def transformer(hparams: Parameters, name: str = "transformer"):
     outputs = tf.keras.layers.Dense(hparams.vocab_size, name="outputs")(dec_outputs)
 
     return tf.keras.Model(inputs=[inputs, dec_inputs], outputs=outputs, name=name)
+
+
+class LearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, d_model: int, warmup_steps: int = 4000):
+        super(LearningRateSchedule, self).__init__()
+        self.d_model = tf.cast(d_model, dtype=tf.float32)
+        self.warmup_steps = warmup_steps
+
+    def __call__(self, step):
+        arg1 = tf.math.rsqrt(step)
+        arg2 = step * self.warmup_steps**-1.5
+        return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
