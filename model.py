@@ -128,3 +128,12 @@ def encoder_layer(params: Parameters, name: str = "encoder_layer"):
     outputs += attention
     outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(outputs)
     return tf.keras.Model(inputs=[inputs, padding_mask], outputs=outputs, name=name)
+
+
+def encoder(params: Parameters, name: str = "encoder"):
+    inputs_embedded = tf.keras.layers.Input(shape=(None, params.model_dim), name="inputs")
+    padding_mask = tf.keras.layers.Input(shape=(1, 1, None), name="padding_mask")
+    outputs = tf.keras.layers.Dropout(params.dropout_rate)(inputs_embedded)
+    for i in range(params.encoder_num_layers):
+        outputs = encoder_layer(params, name=f"{name}_layer_no_{i}")([inputs_embedded, padding_mask])
+    return tf.keras.Model(inputs=[inputs_embedded, padding_mask], outputs=outputs, name=name)
