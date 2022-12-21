@@ -176,7 +176,7 @@ def decoder(params: Parameters, name: str = "decoder"):
 
     embeddings = tf.keras.layers.Embedding(params.vocab_size, params.model_dim)(inputs)
     embeddings *= tf.math.sqrt(tf.cast(params.model_dim, dtype=tf.float32))
-    embeddings = PositionalEncoding(position=params.vocab_size, d_model=params.model_dim)(embeddings)
+    embeddings = PositionalEncoding(position=params.vocab_size, model_dim=params.model_dim)(embeddings)
 
     outputs = tf.keras.layers.Dropout(params.dropout_rate)(embeddings)
     for i in range(params.num_layers):
@@ -186,3 +186,21 @@ def decoder(params: Parameters, name: str = "decoder"):
 
     return tf.keras.Model(inputs=[inputs, enc_outputs, look_ahead_mask, padding_mask],
                           outputs=outputs, name=name)
+
+
+def transformer(params: Parameters, name: str = "transformer"):
+    inputs = tf.keras.layers.Input(shape=(None,), name="inputs")
+    dec_inputs = tf.keras.layers.Input(shape=(None,), name="dec_inputs")
+
+    enc_padding_mask = tf.keras.layers.Lambda(create_padding_mask, output_shape=(1, 1, None),
+                                              name="enc_padding_mask")(inputs)
+    look_ahead_mask = tf.keras.layers.Lambda(create_look_ahead_mask, output_shape=(1, None, None),
+                                             name="look_ahead_mask")(dec_inputs)
+    dec_padding_mask = tf.keras.layers.Lambda(create_padding_mask, output_shape=(1, 1, None),
+                                              name="dec_padding_mask")(inputs)
+
+    enc_outputs = encoder(params)(inputs=[inputs, enc_padding_mask])
+    dec_outputs = decoder(params)(inputs=[dec_inputs, enc_outputs, look_ahead_mask, dec_padding_mask])
+
+    outputs = tf.keras.layers.Dense(params.vocab_size, name="outputs")(dec_outputs)
+    return tf.keras.Model(inputs=[inputs, dec_inputs], outputs=outputs, name=name)
