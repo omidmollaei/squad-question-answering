@@ -47,3 +47,63 @@ def create_look_ahead_mask(x: tf.Tensor):
     )
     padding_mask = create_padding_mask(x)
     return tf.maximum(look_ahead_mask, padding_mask)
+
+
+def scaled_dot_product_attention(query, key, value, mask):
+    """Perform attention mechanism and calculate attention weights"""
+    matmul_qk = tf.matmul(query, key, transpose_b=True)
+    depth = tf.cast(tf.shape(key)[-1], dtype=tf.float32)  # scale matmul_qk
+    logits = matmul_qk / tf.math.sqrt(depth)
+    if mask is not None:   # add the mask to zero out padding tokens
+        logits += mask * -1e9
+    attention_weights = tf.nn.softmax(logits, axis=-1)  # softmax is normalized on the last axis (seq_len_k)
+    output = tf.matmul(attention_weights, value)
+    return output
+
+
+class MultiHeadAttentionLayer(tf.keras.layers.Layer):
+    def __init__(self, num_heads: int, model_dim: int, **kwargs):
+        assert model_dim % num_heads == 0
+        super(MultiHeadAttentionLayer, self).__init__(**kwargs)
+        self.num_heads = num_heads
+        self.model_dim = model_dim
+        self.depth = self.model_dim // self.num_heads
+        self.query_dense = tf.keras.layers.Dense(self.model_dim)
+        self.key_dense = tf.keras.layers.Dense(self.model_dim)
+        self.value_dense = tf.keras.layers.Dense(self.model_dim)
+        self.dense = tf.keras.layers.Dense(self.model_dim)
+
+    def get_config(self):
+        config = super(MultiHeadAttentionLayer, self).get_config()
+        config.update({"num_heads": self.num_heads, "model_dim": self.model_dim})
+        return config
+
+    def split_head(self, inputs: tf.Tensor, batch_size: int):
+        inputs = tf.keras.layers.Lambda(
+            lambda x: tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.depth)))(inputs)
+        return tf.keras.layers.Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1, 3]))(inputs)
+
+    def call(self, inputs: tf.Tensor):
+        query, key, value, mask = (inputs['query'], inputs['key'], inputs['value'], inputs['mask'])
+        batch_size = tf.shape(query)[0]
+
+        # linear layer
+        query = self.query_dense(query)
+        key = self.key_dense(key)
+        value = self.value_dense(value)
+
+        # split heads
+        query = self.split_head(query, batch_size)
+        key = self.split_head(key, batch_size)
+        value = self.split_head(value, batch_size)
+
+        # scaled dot-product attention
+        scaled_attention = scaled_dot_product_attention(query, key, value, mask)
+        scaled_attention = tf.keras.layers.Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1, 3]))(scaled_attention)
+
+        concat_attention = tf.keras.layers.Lambda(
+            lambda x: tf.reshape(x, (batch_size, -1, self.model_dim)))(scaled_attention)  # concatenation of heads
+
+        outputs = self.dense(concat_attention)  # final linear layer
+        return outputs
+    
