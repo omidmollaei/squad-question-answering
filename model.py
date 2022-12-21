@@ -137,3 +137,32 @@ def encoder(params: Parameters, name: str = "encoder"):
     for i in range(params.encoder_num_layers):
         outputs = encoder_layer(params, name=f"{name}_layer_no_{i}")([inputs_embedded, padding_mask])
     return tf.keras.Model(inputs=[inputs_embedded, padding_mask], outputs=outputs, name=name)
+
+
+def decoder_layer(params: Parameters, name: str = "decoder_layer"):
+    inputs = tf.keras.layers.Input(shape=(None, params.model_dim), name="inputs")
+    enc_outputs = tf.keras.layers.Input(shape=(None, params.model_dim), name="encoder_outputs")
+    look_ahead_mask = tf.keras.layers.Input(shape=(1, None, None), name="look_ahead_mask")
+    padding_mask = tf.keras.layers.Input(shape=(1, 1, None), name="padding_mask")
+
+    attention1 = MultiHeadAttentionLayer(
+        num_heads=params.num_heads, model_dim=params.model_dim, name="attention_1"
+    )(inputs={"query": inputs, "key": inputs, "value": inputs, "mask": look_ahead_mask})
+    attention1 += tf.cast(inputs, dtype=tf.float32)
+    attention1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)(attention1)
+
+    attention2 = MultiHeadAttentionLayer(
+        num_heads=params.num_heads, model_dim=params.model_dim, name="attention_2"
+    )(inputs={"query": attention1, "key": enc_outputs, "value": enc_outputs, "mask": padding_mask})
+    attention2 = tf.keras.layers.Dropout(params.dropout_rate)(attention2)
+    attention2 += attention1
+    attention2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)(attention2)
+
+    outputs = tf.keras.layers.Dense(params.num_units, activation=params.activation)(attention2)
+    outputs = tf.keras.layers.Dense(params.model_dim)(outputs)
+    outputs = tf.keras.layers.Dropout(params.dropout_rate)(outputs)
+    outputs += attention2
+    outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(outputs)
+
+    return tf.keras.Model(inputs=[inputs, enc_outputs, look_ahead_mask, padding_mask],
+                          outputs=outputs, name=name)
