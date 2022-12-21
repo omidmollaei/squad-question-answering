@@ -131,12 +131,17 @@ def encoder_layer(params: Parameters, name: str = "encoder_layer"):
 
 
 def encoder(params: Parameters, name: str = "encoder"):
-    inputs_embedded = tf.keras.layers.Input(shape=(None, params.model_dim), name="inputs")
+    inputs = tf.keras.layers.Input(shape=(None,), name="inputs")
     padding_mask = tf.keras.layers.Input(shape=(1, 1, None), name="padding_mask")
-    outputs = tf.keras.layers.Dropout(params.dropout_rate)(inputs_embedded)
+
+    embeddings = tf.keras.layers.Embedding(params.vocab_size, params.model_dim)(inputs)
+    embeddings *= tf.math.sqrt(tf.cast(params.model_dim, dtype=tf.float32))
+    embeddings = PositionalEncoding(position=params.vocab_size, model_dim=params.model_dim)(embeddings)
+
+    outputs = tf.keras.layers.Dropout(params.dropout_rate)(embeddings)
     for i in range(params.num_layers):
-        outputs = encoder_layer(params, name=f"{name}_layer_no_{i}")([inputs_embedded, padding_mask])
-    return tf.keras.Model(inputs=[inputs_embedded, padding_mask], outputs=outputs, name=name)
+        outputs = encoder_layer(params, name=f"{name}_layer_no_{i}")([outputs, padding_mask])
+    return tf.keras.Model(inputs=[inputs, padding_mask], outputs=outputs, name=name)
 
 
 def decoder_layer(params: Parameters, name: str = "decoder_layer"):
