@@ -106,4 +106,25 @@ class MultiHeadAttentionLayer(tf.keras.layers.Layer):
 
         outputs = self.dense(concat_attention)  # final linear layer
         return outputs
-    
+
+
+def encoder_layer(params: Parameters, name: str = "encoder_layer"):
+    inputs = tf.keras.layers.Input(shape=(None, params.model_dim), name="inputs")
+    padding_mask = tf.keras.layers.Input(shape=(1, 1, None), name="padding_mask")
+    attention = MultiHeadAttentionLayer(
+        num_heads=params.num_heads, model_dim=params.model_dim, name="self_attention"
+    )({
+        "query": inputs,
+        "key": inputs,
+        "value": inputs,
+        "mask": padding_mask
+    })
+    attention = tf.keras.layers.Dropout(params.dropout_rate)(attention)
+    attention += tf.cast(inputs, dtype=tf.float32)
+    attention = tf.keras.layers.LayerNormalization(epsilon=1e-6)(attention)
+    outputs = tf.keras.layers.Dense(params.num_units, activation=params.activation)(attention)
+    outputs = tf.keras.layers.Dense(params.model_dim)(outputs)
+    outputs = tf.keras.layers.Dropout(params.dropout_rate)(outputs)
+    outputs += attention
+    outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(outputs)
+    return tf.keras.Model(inputs=[inputs, padding_mask], outputs=outputs, name=name)
