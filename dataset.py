@@ -58,7 +58,7 @@ def padding(params, context_question, answer):
     context_question_padded = tf.keras.preprocessing.sequence.pad_sequences(
         context_question, maxlen=params.max_input_len, padding="post")
     answer_padded = tf.keras.preprocessing.sequence.pad_sequences(
-        answer, padding="post")
+        answer, maxlen=params.max_output_len, padding="post")
     return context_question_padded, answer_padded
 
 
@@ -68,7 +68,7 @@ def concat_and_tokenize(params, ds_info, contexts, questions, answers, tokenizer
     for c, q, a in zip(contexts, questions, answers):
         concat = params.start_token + tokenizer.encode(c) + params.concat_token + tokenizer.encode(q) + params.end_token
         answer_tokenized = params.start_token + tokenizer.encode(a) + params.end_token
-        if len(concat) > params.max_input_len:
+        if len(concat) > params.max_input_len or len(answer_tokenized) > params.max_output_len:
             ds_info.num_dropped += 1
             continue
         ds_info.inputs_len.append(len(concat))
