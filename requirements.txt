@@ -1,5 +1,6 @@
 datasets>=2.6
-tensorflow>=2.1
+tensorflow
+tensorflow_datasets
 numpy
 pandas
 
