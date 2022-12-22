@@ -221,23 +221,3 @@ class LearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         arg1 = tf.math.rsqrt(step)
         arg2 = step * self.warmup_steps**-1.5
         return tf.math.rsqrt(self.model_dim) * tf.math.minimum(arg1, arg2)
-
-
-def masked_loss_function(max_length: int):
-    """max_length is related to maximum sequence length of an input question."""
-    def loss_func(y_true, y_pred):
-        cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction="none")
-        y_true = tf.reshape(y_true, shape=(-1, max_length - 1))
-        loss = cross_entropy(y_true, y_pred)
-        mask = tf.cast(tf.not_equal(y_true, 0), dtype=tf.float32)
-        loss = tf.multiply(loss, mask)
-        return tf.reduce_mean(loss)
-    return loss_func
-
-
-def masked_accuracy(max_length: int):
-    """max_length is related to maximum sequence length of an input question."""
-    def acc(y_true, y_pred):
-        y_true = tf.reshape(y_true, shape=(-1, max_length - 1))
-        return tf.keras.metrics.sparse_categorical_accuracy(y_true, y_pred)
-    return masked_accuracy
